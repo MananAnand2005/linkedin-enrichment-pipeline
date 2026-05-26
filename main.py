@@ -44,13 +44,15 @@ def main():
 
             continue
 
-        linkedin_url = linkedin_result["linkedin_url"]
+        serper_linkedin_url = (
+            linkedin_result.get("linkedin_url")
+        )
 
         # -----------------------------------
         # STEP 2: PDL Enrichment
         # -----------------------------------
         enriched_data = enrich_profile(
-            linkedin_url,
+            serper_linkedin_url,
             name,
             company
         )
@@ -62,7 +64,8 @@ def main():
 
             enriched_data = {
                 "job_title": None,
-                "current_experience": {}
+                "current_experience": {},
+                "linkedin_url": None
             }
 
         # -----------------------------------
@@ -74,14 +77,36 @@ def main():
         )
 
         # -----------------------------------
+        # Canonical LinkedIn URL
+        # -----------------------------------
+        canonical_linkedin_url = (
+            enriched_data.get("linkedin_url")
+            or serper_linkedin_url
+        )
+
+        # -----------------------------------
+        # Normalize URL format
+        # -----------------------------------
+        if canonical_linkedin_url:
+
+            if not canonical_linkedin_url.startswith(
+                "https://"
+            ):
+
+                canonical_linkedin_url = (
+                    "https://www." +
+                    canonical_linkedin_url.replace(
+                        "https://",
+                        ""
+                    )
+                )
+
+        # -----------------------------------
         # Resolve best title
         # -----------------------------------
         best_title = (
-
             current_exp.get("title")
-
             or enriched_data.get("job_title")
-
             or linkedin_result.get("title")
         )
 
@@ -91,7 +116,7 @@ def main():
         industry = "Financial Services"
 
         # -----------------------------------
-        # STEP 3: Gemini Role Summary
+        # STEP 3: Gemini Summary
         # -----------------------------------
         role_summary = generate_role_summary(
             name=name,
@@ -101,7 +126,7 @@ def main():
         )
 
         # -----------------------------------
-        # Final combined output
+        # Final Output Row
         # -----------------------------------
         final_result = {
 
@@ -109,8 +134,11 @@ def main():
 
             "company": company,
 
-            "linkedin_url":
-                linkedin_result.get("linkedin_url"),
+            "serper_linkedin_url":
+                serper_linkedin_url,
+
+            "canonical_linkedin_url":
+                canonical_linkedin_url,
 
             "headline_title":
                 linkedin_result.get("title"),
@@ -131,7 +159,7 @@ def main():
                 linkedin_result.get("confidence_score"),
 
             "role_summary":
-                role_summary
+                role_summary or "Gemini summary failed"
         }
 
         results.append(final_result)
@@ -139,7 +167,7 @@ def main():
         print("Completed successfully")
 
     # -----------------------------------
-    # Save output Excel
+    # Save output
     # -----------------------------------
     save_output_file(
         results,

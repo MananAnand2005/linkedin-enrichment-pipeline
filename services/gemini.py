@@ -1,183 +1,125 @@
-from services.serper import search_linkedin
-from services.pdl import enrich_profile
-from services.gemini import generate_role_summary
+import requests
+import os
+import urllib3
 
-from utils.excel import (
-    read_input_file,
-    save_output_file
+from dotenv import load_dotenv
+
+# Disable SSL warnings temporarily
+urllib3.disable_warnings(
+    urllib3.exceptions.InsecureRequestWarning
 )
 
-INPUT_FILE = "input/input.xlsx"
-OUTPUT_FILE = "output/output.xlsx"
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
-def main():
-
-    # -----------------------------------
-    # Read input Excel
-    # -----------------------------------
-    df = read_input_file(INPUT_FILE)
-
-    results = []
-
-    # -----------------------------------
-    # Process each row
-    # -----------------------------------
-    for index, row in df.iterrows():
-
-        name = row["Name"]
-        company = row["Company"]
-
-        print(f"\nProcessing: {name} | {company}")
-
-        # -----------------------------------
-        # STEP 1: LinkedIn Discovery
-        # -----------------------------------
-        linkedin_result = search_linkedin(
-            name,
-            company
-        )
-
-        if not linkedin_result:
-
-            print("LinkedIn discovery failed")
-
-            continue
-
-        serper_linkedin_url = (
-            linkedin_result.get("linkedin_url")
-        )
-
-        # -----------------------------------
-        # STEP 2: PDL Enrichment
-        # -----------------------------------
-        enriched_data = enrich_profile(
-            serper_linkedin_url,
-            name,
-            company
-        )
-
-        # -----------------------------------
-        # Graceful fallback if PDL fails
-        # -----------------------------------
-        if not enriched_data:
-
-            enriched_data = {
-                "job_title": None,
-                "current_experience": {},
-                "linkedin_url": None
-            }
-
-        # -----------------------------------
-        # Safe extraction
-        # -----------------------------------
-        current_exp = (
-            enriched_data.get("current_experience")
-            or {}
-        )
-
-        # -----------------------------------
-        # Canonical LinkedIn URL
-        # Prefer PDL normalized URL
-        # -----------------------------------
-        canonical_linkedin_url = (
-            enriched_data.get("linkedin_url")
-            or serper_linkedin_url
-        )
-
-        # -----------------------------------
-        # Normalize URL format
-        # -----------------------------------
-        if canonical_linkedin_url:
-
-            if not canonical_linkedin_url.startswith(
-                "https://"
-            ):
-
-                canonical_linkedin_url = (
-                    "https://www." +
-                    canonical_linkedin_url.replace(
-                        "https://",
-                        ""
-                    )
-                )
-
-        # -----------------------------------
-        # Resolve best title
-        # -----------------------------------
-        best_title = (
-
-            current_exp.get("title")
-
-            or enriched_data.get("job_title")
-
-            or linkedin_result.get("title")
-        )
-
-        # -----------------------------------
-        # Industry fallback
-        # -----------------------------------
-        industry = "Financial Services"
-
-        # -----------------------------------
-        # STEP 3: Gemini Role Summary
-        # -----------------------------------
-        role_summary = generate_role_summary(
-            name=name,
-            company=company,
-            title=best_title,
-            industry=industry
-        )
-
-        # -----------------------------------
-        # Final combined output
-        # -----------------------------------
-        final_result = {
-
-            "name": name,
-
-            "company": company,
-
-            "serper_linkedin_url":
-                serper_linkedin_url,
-
-            "canonical_linkedin_url":
-                canonical_linkedin_url,
-
-            "headline_title":
-                linkedin_result.get("title"),
-
-            "headline_snippet":
-                linkedin_result.get("snippet"),
-
-            "pdl_job_title":
-                enriched_data.get("job_title"),
-
-            "best_current_title":
-                current_exp.get("title"),
-
-            "best_current_company":
-                current_exp.get("company"),
-
-            "confidence_score":
-                linkedin_result.get("confidence_score"),
-
-            "role_summary":
-                role_summary or "Gemini summary failed"
-        }
-
-        results.append(final_result)
-
-        print("Completed successfully")
+def generate_role_summary(
+    name,
+    company,
+    title,
+    industry
+):
 
     # -----------------------------------
-    # Save output Excel
+    # Safety fallback
     # -----------------------------------
-    save_output_file(
-        results,
-        OUTPUT_FILE
+    if not title:
+
+        return "No role title available"
+
+    # -----------------------------------
+    # Gemini endpoint
+    # -----------------------------------
+    url = (
+        "https://generativelanguage.googleapis.com"
+        f"/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
     )
 
+    # -----------------------------------
+    # Prompt
+    # -----------------------------------
+    prompt = f"""
+You are analyzing corporate professionals.
 
-if __name__ == "__main__":
-    main()
+Based on the following structured profile data,
+explain what this person likely does in their role.
+
+Be specific to the function and industry.
+Avoid generic corporate jargon.
+Keep response under 60 words.
+
+Name: {name}
+Company: {company}
+Role: {title}
+Industry: {industry}
+"""
+
+    # -----------------------------------
+    # Request payload
+    # -----------------------------------
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ]
+    }
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # -----------------------------------
+    # API request
+    # -----------------------------------
+    try:
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            verify=False
+        )
+
+    except Exception as e:
+
+        print("\nGemini Connection Error:")
+        print(e)
+
+        return "Gemini connection failed"
+
+    # -----------------------------------
+    # Handle non-200 responses
+    # -----------------------------------
+    if response.status_code != 200:
+
+        print("\nGemini API Error:")
+        print(response.text)
+
+        return "Gemini summary failed"
+
+    # -----------------------------------
+    # Parse response
+    # -----------------------------------
+    try:
+
+        data = response.json()
+
+        summary = (
+            data["candidates"][0]
+            ["content"]["parts"][0]["text"]
+        )
+
+        return summary.strip()
+
+    except Exception as e:
+
+        print("\nGemini Parsing Error:")
+        print(e)
+
+        return "Gemini parsing failed"
