@@ -5,6 +5,40 @@ export default function App() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
+    // -----------------------------------
+  // Progress Metrics
+  // -----------------------------------
+
+  const totalRows = rows.length;
+
+  const completedRows = rows.filter(
+    (row) => row.status === "Completed"
+  ).length;
+
+  const failedRows = rows.filter(
+    (row) => row.status === "Failed"
+  ).length;
+
+  const processingRows = rows.filter(
+    (row) => row.status === "Processing..."
+  ).length;
+
+  const remainingRows =
+    totalRows -
+    completedRows -
+    failedRows -
+    processingRows;
+
+  const progressPercentage =
+    totalRows > 0
+      ? (
+          (
+            completedRows +
+            failedRows
+          ) / totalRows
+        ) * 100
+      : 0;
+
   // -----------------------------------
   // Upload Excel
   // -----------------------------------
@@ -33,31 +67,61 @@ export default function App() {
   };
 
   // -----------------------------------
-  // Run Enrichment
+  // Live Enrichment
   // -----------------------------------
 
   const runEnrichment = async () => {
 
     setLoading(true);
 
-    const response = await fetch(
-      "http://localhost:8000/run-enrichment",
-      {
-        method: "POST",
+    const updatedRows = [];
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+    for (const row of rows) {
 
-        body: JSON.stringify({
-          rows: rows,
-        }),
-      }
-    );
+      // -----------------------------------
+      // Show processing immediately
+      // -----------------------------------
 
-    const data = await response.json();
+      updatedRows.push({
 
-    setRows(data.rows);
+        ...row,
+
+        status: "Processing..."
+      });
+
+      setRows([...updatedRows]);
+
+      // -----------------------------------
+      // Backend call
+      // -----------------------------------
+
+      const response = await fetch(
+        "http://localhost:8000/enrich-lead",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            row: row,
+          }),
+        }
+      );
+
+      const enrichedRow = await response.json();
+
+      // -----------------------------------
+      // Replace latest row
+      // -----------------------------------
+
+      updatedRows[
+        updatedRows.length - 1
+      ] = enrichedRow;
+
+      setRows([...updatedRows]);
+    }
 
     setLoading(false);
   };
@@ -138,6 +202,111 @@ export default function App() {
 
         </div>
 
+        {/* Metrics Grid */}
+
+<div className="grid grid-cols-5 gap-4 mb-8">
+
+  {/* Total */}
+
+  <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+
+    <div className="text-sm text-white/50 mb-2">
+      Total Leads
+    </div>
+
+    <div className="text-3xl font-semibold">
+      {totalRows}
+    </div>
+
+  </div>
+
+  {/* Completed */}
+
+  <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+
+    <div className="text-sm text-white/50 mb-2">
+      Completed
+    </div>
+
+    <div className="text-3xl font-semibold text-[#9AC86B]">
+      {completedRows}
+    </div>
+
+  </div>
+
+  {/* Failed */}
+
+  <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+
+    <div className="text-sm text-white/50 mb-2">
+      Failed
+    </div>
+
+    <div className="text-3xl font-semibold text-red-400">
+      {failedRows}
+    </div>
+
+  </div>
+
+  {/* Processing */}
+
+  <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+
+    <div className="text-sm text-white/50 mb-2">
+      Processing
+    </div>
+
+    <div className="text-3xl font-semibold text-[#18A0D8]">
+      {processingRows}
+    </div>
+
+  </div>
+
+  {/* Remaining */}
+
+  <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
+
+    <div className="text-sm text-white/50 mb-2">
+      Remaining
+    </div>
+
+    <div className="text-3xl font-semibold">
+      {remainingRows}
+    </div>
+
+  </div>
+
+</div>
+
+{/* Progress Bar */}
+
+<div className="mb-8">
+
+  <div className="flex justify-between mb-3">
+
+    <div className="text-white/70">
+      Enrichment Progress
+    </div>
+
+    <div className="text-white/50">
+      {Math.round(progressPercentage)}%
+    </div>
+
+  </div>
+
+  <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden">
+
+    <div
+      className="h-full bg-[#18A0D8] transition-all duration-500"
+      style={{
+        width: `${progressPercentage}%`
+      }}
+    />
+
+  </div>
+
+</div>
+        
         {/* Upload Card */}
 
         <div className="bg-white/5 border border-white/10 rounded-3xl p-8 mb-8">

@@ -52,9 +52,6 @@ async def upload_excel(
 
         df = pd.read_excel(file.file)
 
-        print("\n========== DATAFRAME ==========")
-        print(df.head())
-
         df = df.dropna(how="all")
 
         df = df.where(
@@ -78,143 +75,117 @@ async def upload_excel(
         }
 
 # -----------------------------------
-# Run Enrichment
+# Enrich Single Lead
 # -----------------------------------
 
-@app.post("/run-enrichment")
-async def run_enrichment(
+@app.post("/enrich-lead")
+async def enrich_lead(
 
-    payload: EnrichmentRequest
+    payload: dict
 
 ):
 
-    enriched_rows = []
+    try:
 
-    for row in payload.rows:
+        row = payload.get("row", {})
 
-        try:
+        name = (
+            row.get("Name")
+            or row.get("name")
+            or ""
+        )
 
-            # -----------------------------------
-            # Extract fields
-            # -----------------------------------
+        company = (
+            row.get("Company")
+            or row.get("company")
+            or ""
+        )
 
-            name = (
-                row.get("Name")
-                or row.get("name")
-                or ""
-            )
+        print(f"\nProcessing: {name} | {company}")
 
-            company = (
-                row.get("Company")
-                or row.get("company")
-                or ""
-            )
+        # -----------------------------------
+        # Serper
+        # -----------------------------------
 
-            print(f"\nProcessing: {name} | {company}")
+        linkedin_data = search_linkedin(
+            name,
+            company
+        )
 
-            # -----------------------------------
-            # Serper
-            # -----------------------------------
+        if not linkedin_data:
 
-            linkedin_data = search_linkedin(
-                name,
-                company
-            )
-
-            if not linkedin_data:
-
-                enriched_rows.append({
-
-                    **row,
-
-                    "linkedin_url": None,
-
-                    "role_title": None,
-
-                    "role_summary": None,
-
-                    "status": "LinkedIn Not Found"
-                })
-
-                continue
-
-            linkedin_url = linkedin_data.get(
-                "linkedin_url"
-            )
-
-            # -----------------------------------
-            # PDL
-            # -----------------------------------
-
-            pdl_data = enrich_profile(
-                linkedin_url,
-                company
-            )
-
-            # -----------------------------------
-            # Extract role title
-            # -----------------------------------
-
-            role_title = None
-
-            if pdl_data:
-
-                role_title = (
-                    pdl_data.get("best_current_title")
-                    or pdl_data.get("pdl_job_title")
-                )
-
-            # -----------------------------------
-            # Gemini
-            # -----------------------------------
-
-            role_summary = None
-
-            if role_title:
-
-                role_summary = generate_role_summary(
-                    name=name,
-                    company=company,
-                    role_title=role_title
-                )
-
-            # -----------------------------------
-            # Final row
-            # -----------------------------------
-
-            enriched_row = {
+            return {
 
                 **row,
 
-                "linkedin_url": linkedin_url,
-
-                "role_title": role_title,
-
-                "role_summary": role_summary,
-
-                "status": "Completed"
+                "status": "LinkedIn Not Found"
             }
 
-            enriched_rows.append(
-                enriched_row
+        linkedin_url = linkedin_data.get(
+            "linkedin_url"
+        )
+
+        # -----------------------------------
+        # PDL
+        # -----------------------------------
+
+        pdl_data = enrich_profile(
+            linkedin_url,
+            company
+        )
+
+        role_title = None
+
+        if pdl_data:
+
+            role_title = (
+                pdl_data.get("best_current_title")
+                or pdl_data.get("pdl_job_title")
             )
 
-        except Exception as e:
+        # -----------------------------------
+        # Gemini
+        # -----------------------------------
 
-            print(str(e))
+        role_summary = None
 
-            enriched_rows.append({
+        if role_title:
 
-                **row,
+            role_summary = generate_role_summary(
+                name=name,
+                company=company,
+                role_title=role_title
+            )
 
-                "status": "Failed",
+        # -----------------------------------
+        # Final Output
+        # -----------------------------------
 
-                "error": str(e)
-            })
+        return {
 
-    return {
-        "rows": enriched_rows
-    }
+            **row,
+
+            "linkedin_url": linkedin_url,
+
+            "role_title": role_title,
+
+            "role_summary": role_summary,
+
+            "status": "Completed"
+        }
+
+    except Exception as e:
+
+        print(str(e))
+
+        return {
+
+            **row,
+
+            "status": "Failed",
+
+            "error": str(e)
+        }
 
 # -----------------------------------
 # Export Excel
