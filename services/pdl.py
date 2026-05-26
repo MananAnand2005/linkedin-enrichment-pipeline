@@ -13,6 +13,10 @@ load_dotenv()
 PDL_API_KEY = os.getenv("PDL_API_KEY")
 
 
+# -----------------------------------
+# Extract Best Experience Match
+# -----------------------------------
+
 def extract_current_experience(
     experiences,
     target_company
@@ -21,23 +25,36 @@ def extract_current_experience(
     if not experiences:
         return {}
 
-    target_company = target_company.lower()
+    target_company = (
+        target_company or ""
+    ).lower()
 
     # -----------------------------------
-    # First try company match
+    # First try matching company
     # -----------------------------------
+
     for exp in experiences:
 
         company_name = (
             exp.get("company", {})
             .get("name", "")
-            .lower()
         )
 
-        if target_company.split()[0] in company_name:
+        company_name_lower = (
+            company_name or ""
+        ).lower()
+
+        if (
+            target_company
+            and company_name_lower
+            and target_company.split()[0]
+            in company_name_lower
+        ):
 
             return {
+
                 "company": company_name,
+
                 "title": (
                     exp.get("title", {})
                     .get("name")
@@ -47,13 +64,16 @@ def extract_current_experience(
     # -----------------------------------
     # Fallback to first experience
     # -----------------------------------
+
     first_exp = experiences[0]
 
     return {
+
         "company": (
             first_exp.get("company", {})
             .get("name")
         ),
+
         "title": (
             first_exp.get("title", {})
             .get("name")
@@ -61,10 +81,14 @@ def extract_current_experience(
     }
 
 
+# -----------------------------------
+# PDL Enrichment
+# -----------------------------------
+
 def enrich_profile(
     linkedin_url,
-    name,
-    company
+    company,
+    preliminary_title=None
 ):
 
     url = "https://api.peopledatalabs.com/v5/person/enrich"
@@ -84,6 +108,10 @@ def enrich_profile(
         verify=False
     )
 
+    # -----------------------------------
+    # API Failure
+    # -----------------------------------
+
     if response.status_code != 200:
 
         print(f"PDL Error: {response.text}")
@@ -95,27 +123,68 @@ def enrich_profile(
     print("\n=== PDL RAW RESPONSE ===")
     print(data)
 
-    person_data = data.get("data", {})
+    # -----------------------------------
+    # Main Person Data
+    # -----------------------------------
 
-    experience = person_data.get("experience", [])
+    person_data = data.get(
+        "data",
+        {}
+    )
+
+    experience = person_data.get(
+        "experience",
+        []
+    )
+
+    # -----------------------------------
+    # Extract Best Experience
+    # -----------------------------------
 
     current_experience = extract_current_experience(
         experience,
         company
     )
 
+    # -----------------------------------
+    # Safe Current Title
+    # -----------------------------------
+
+    best_current_title = (
+        current_experience.get("title")
+        if current_experience
+        else None
+    )
+
+    best_current_company = (
+        current_experience.get("company")
+        if current_experience
+        else None
+    )
+
+    # -----------------------------------
+    # Final Response
+    # -----------------------------------
+
     return {
-        "full_name": person_data.get("full_name"),
 
-        "linkedin_url": linkedin_url,
+        "full_name":
+            person_data.get("full_name"),
 
-        "location": person_data.get("location_name"),
+        "linkedin_url":
+            linkedin_url,
 
-        "job_company":
-            person_data.get("job_company_name"),
+        "location":
+            person_data.get("location_name"),
 
-        "job_title":
+        "pdl_job_title":
             person_data.get("job_title"),
+
+        "best_current_title":
+            best_current_title,
+
+        "best_current_company":
+            best_current_company,
 
         "current_experience":
             current_experience

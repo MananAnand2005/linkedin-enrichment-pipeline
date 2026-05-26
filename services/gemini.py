@@ -1,63 +1,53 @@
 import requests
 import os
-import urllib3
 
 from dotenv import load_dotenv
 
-# Disable SSL warnings temporarily
+import urllib3
+
 urllib3.disable_warnings(
     urllib3.exceptions.InsecureRequestWarning
 )
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY"
+)
 
+# -----------------------------------
+# Generate AI Role Summary
+# -----------------------------------
 
 def generate_role_summary(
+
     name,
     company,
-    title,
-    industry
+    role_title
+
 ):
 
-    # -----------------------------------
-    # Safety fallback
-    # -----------------------------------
-    if not title:
-
-        return "No role title available"
-
-    # -----------------------------------
-    # Gemini endpoint
-    # -----------------------------------
-    url = (
-        "https://generativelanguage.googleapis.com"
-        f"/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    )
-
-    # -----------------------------------
-    # Prompt
-    # -----------------------------------
     prompt = f"""
-You are analyzing corporate professionals.
 
-Based on the following structured profile data,
-explain what this person likely does in their role.
+    Person Name:
+    {name}
 
-Be specific to the function and industry.
-Avoid generic corporate jargon.
-Keep response under 60 words.
+    Company:
+    {company}
 
-Name: {name}
-Company: {company}
-Role: {title}
-Industry: {industry}
-"""
+    Role:
+    {role_title}
 
-    # -----------------------------------
-    # Request payload
-    # -----------------------------------
+    Write a short professional summary
+    explaining what this person likely does.
+
+    Keep it under 2 sentences.
+    Be concise and business-focused.
+
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={GEMINI_API_KEY}"
+
     payload = {
         "contents": [
             {
@@ -74,45 +64,32 @@ Industry: {industry}
         "Content-Type": "application/json"
     }
 
-    # -----------------------------------
-    # API request
-    # -----------------------------------
-    try:
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            verify=False
-        )
-
-    except Exception as e:
-
-        print("\nGemini Connection Error:")
-        print(e)
-
-        return "Gemini connection failed"
+    response = requests.post(
+        url,
+        headers=headers,
+        json=payload,
+        verify=False
+    )
 
     # -----------------------------------
-    # Handle non-200 responses
+    # Error Handling
     # -----------------------------------
+
     if response.status_code != 200:
 
         print("\nGemini API Error:")
         print(response.text)
 
-        return "Gemini summary failed"
+        return None
 
-    # -----------------------------------
-    # Parse response
-    # -----------------------------------
+    data = response.json()
+
     try:
-
-        data = response.json()
 
         summary = (
             data["candidates"][0]
-            ["content"]["parts"][0]["text"]
+            ["content"]["parts"][0]
+            ["text"]
         )
 
         return summary.strip()
@@ -120,6 +97,6 @@ Industry: {industry}
     except Exception as e:
 
         print("\nGemini Parsing Error:")
-        print(e)
+        print(str(e))
 
-        return "Gemini parsing failed"
+        return None
