@@ -54,7 +54,7 @@ export default function App() {
     formData.append("file", file);
 
     const response = await fetch(
-      "http://localhost:8000/upload-excel",
+      "https://linkedin-enrichment-backend.onrender.com/upload-excel",
       {
         method: "POST",
         body: formData,
@@ -96,7 +96,7 @@ export default function App() {
       // -----------------------------------
 
       const response = await fetch(
-        "http://localhost:8000/enrich-lead",
+        "https://linkedin-enrichment-backend.onrender.com/enrich-lead",
         {
           method: "POST",
 
@@ -133,7 +133,7 @@ export default function App() {
   const exportResults = async () => {
 
     const response = await fetch(
-      "http://localhost:8000/export-excel",
+      "https://linkedin-enrichment-backend.onrender.com/export-excel",
       {
         method: "POST",
 
