@@ -1,8 +1,12 @@
 import requests
 import os
 import urllib3
-
+import json
 from dotenv import load_dotenv
+
+from services.scoring import (
+    calculate_candidate_score
+)
 
 urllib3.disable_warnings(
     urllib3.exceptions.InsecureRequestWarning
@@ -10,32 +14,9 @@ urllib3.disable_warnings(
 
 load_dotenv()
 
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-
-
-def calculate_confidence(
-    title,
-    snippet,
-    company,
-    name
-):
-
-    score = 0
-
-    combined = (
-        f"{title} {snippet}"
-    ).lower()
-
-    if company.lower() in combined:
-        score += 2
-
-    if name.split()[0].lower() in combined:
-        score += 1
-
-    if "linkedin" in combined:
-        score += 1
-
-    return score
+SERPER_API_KEY = os.getenv(
+    "SERPER_API_KEY"
+)
 
 
 def search_linkedin(
@@ -46,7 +27,7 @@ def search_linkedin(
     url = "https://google.serper.dev/search"
 
     payload = {
-        "q": f'{name} {company} LinkedIn'
+        "q": f"{name} {company} LinkedIn"
     }
 
     headers = {
@@ -63,38 +44,158 @@ def search_linkedin(
 
     if response.status_code != 200:
 
-        print("Serper API Error")
+        print("\n=== SERPER API ERROR ===")
         print(response.text)
 
         return None
 
     data = response.json()
 
-    organic_results = data.get("organic", [])
+    organic_results = data.get(
+        "organic",
+        []
+    )
+
+    # -----------------------------------
+    # Collect Candidate Profiles
+    # -----------------------------------
+
+    linkedin_candidates = []
 
     for result in organic_results:
 
-        link = result.get("link", "")
+        link = result.get(
+            "link",
+            ""
+        )
 
-        if "linkedin.com/in/" in link:
+        # Only consider personal LinkedIn profiles
 
-            title = result.get("title")
-            snippet = result.get("snippet")
+        if "linkedin.com/in/" not in link:
+            continue
 
-            confidence = calculate_confidence(
-                title,
-                snippet,
-                company,
-                name
-            )
+        title = result.get(
+            "title",
+            ""
+        )
 
-            return {
-                "linkedin_url": link,
-                "title": title,
-                "snippet": snippet,
-                "confidence_score": confidence
-            }
+        snippet = result.get(
+            "snippet",
+            ""
+        )
 
-    print(f"No results found for {name}")
+        # -----------------------------------
+        # Score Candidate
+        # -----------------------------------
 
-    return None
+        score_data = calculate_candidate_score(
+
+        input_name=name,
+
+        input_company=company,
+
+         candidate=result
+        )
+
+        score = score_data[
+        "confidence_score"
+        ]
+
+        signals = score_data[
+        "match_signals"
+        ]
+
+        penalties = score_data[
+       "penalties"
+        ]
+
+        diagnostics = score_data[
+        "diagnostics"
+        ]
+
+        candidate_data = {
+
+            "linkedin_url": link,
+
+            "title": title,
+
+            "snippet": snippet,
+
+            "confidence_score": score,
+            "match_signals": signals,
+            "penalties": penalties,
+            "diagnostics": diagnostics
+        }
+
+        linkedin_candidates.append(
+            candidate_data
+        )
+
+    # -----------------------------------
+    # No Candidates Found
+    # -----------------------------------
+
+    if not linkedin_candidates:
+
+        print(
+            f"\nNo LinkedIn results found for {name}"
+        )
+
+        return None
+
+    # -----------------------------------
+    # Sort By Confidence
+    # -----------------------------------
+
+    linkedin_candidates = sorted(
+
+        linkedin_candidates,
+
+        key=lambda x:
+        x["confidence_score"],
+
+        reverse=True
+    )
+
+    # -----------------------------------
+    # Best Match
+    # -----------------------------------
+
+    best_candidate = linkedin_candidates[0]
+
+    print("\n=== BEST MATCH ===")
+
+    print(best_candidate)
+
+    print(
+        json.dumps(
+            best_candidate,
+            indent=4
+        )
+    )
+
+    # -----------------------------------
+    # Optional:
+    # Show Top Candidates
+    # -----------------------------------
+
+
+
+    print("\n=== TOP CANDIDATES ===")
+
+    for idx, candidate in enumerate(
+        linkedin_candidates[:5],
+        start=1
+    ):
+
+     print(
+        f"\n========== Candidate #{idx} =========="
+    )
+
+    print(
+        json.dumps(
+            candidate,
+            indent=4
+        )
+    )
+    return best_candidate

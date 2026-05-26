@@ -163,16 +163,33 @@ async def enrich_lead(
 
         return {
 
-            **row,
+        **row,
 
-            "linkedin_url": linkedin_url,
+          "linkedin_url":
+           linkedin_url,
 
-            "role_title": role_title,
+         "role_title":
+         role_title,
 
-            "role_summary": role_summary,
+         "role_summary":
+         role_summary,
 
-            "status": "Completed"
-        }
+         "confidence_score":
+         linkedin_data.get(
+            "confidence_score"
+         ),
+
+         "match_signals":
+          ", ".join(
+            linkedin_data.get(
+                "match_signals",
+                []
+            )
+         ),
+
+    "status":
+        "Completed"
+}
 
     except Exception as e:
 
