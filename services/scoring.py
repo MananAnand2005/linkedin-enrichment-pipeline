@@ -18,7 +18,7 @@ def normalize_text(text):
 
 
 # -----------------------------------
-# Name Match
+# Name Similarity
 # -----------------------------------
 
 def score_name_match(
@@ -43,7 +43,7 @@ def score_name_match(
 
 
 # -----------------------------------
-# Company Match
+# Company Similarity
 # -----------------------------------
 
 def score_company_match(
@@ -68,7 +68,49 @@ def score_company_match(
 
 
 # -----------------------------------
-# Candidate Scoring Engine
+# Candidate Name Gate
+# -----------------------------------
+
+def passes_name_gate(
+
+    input_name,
+    candidate_title
+
+):
+
+    input_name = normalize_text(
+        input_name
+    )
+
+    candidate_title = normalize_text(
+        candidate_title
+    )
+
+    if not input_name:
+        return False
+
+    input_first_name = (
+        input_name.split()[0]
+    )
+
+    # Basic first-name existence check
+
+    if input_first_name not in candidate_title:
+
+        return False
+
+    # Looser fuzzy threshold
+
+    similarity = fuzz.partial_ratio(
+        input_name,
+        candidate_title
+    )
+
+    return similarity >= 60
+
+
+# -----------------------------------
+# Main Candidate Scoring
 # -----------------------------------
 
 def calculate_candidate_score(
@@ -103,7 +145,7 @@ def calculate_candidate_score(
     diagnostics = {}
 
     # -----------------------------------
-    # Name Similarity
+    # Name Score
     # -----------------------------------
 
     raw_name_score = score_name_match(
@@ -112,7 +154,7 @@ def calculate_candidate_score(
     )
 
     weighted_name_score = (
-        raw_name_score * 0.4
+        raw_name_score * 0.45
     )
 
     total_score += weighted_name_score
@@ -143,7 +185,7 @@ def calculate_candidate_score(
         )
 
     # -----------------------------------
-    # Company Similarity
+    # Company Score
     # -----------------------------------
 
     raw_company_score = score_company_match(
@@ -152,7 +194,7 @@ def calculate_candidate_score(
     )
 
     weighted_company_score = (
-        raw_company_score * 0.4
+        raw_company_score * 0.35
     )
 
     total_score += weighted_company_score
@@ -183,19 +225,30 @@ def calculate_candidate_score(
         )
 
     # -----------------------------------
-    # LinkedIn Profile Quality
+    # LinkedIn Slug Validation
     # -----------------------------------
 
     linkedin_bonus = 0
 
-    if "/in/" in link:
+    linkedin_slug = (
+        link.split("/in/")[-1]
+        .replace("-", " ")
+        .lower()
+    )
 
-        linkedin_bonus = 20
+    input_first_name = (
+        normalize_text(input_name)
+        .split()[0]
+    )
+
+    if input_first_name in linkedin_slug:
+
+        linkedin_bonus = 15
 
         total_score += linkedin_bonus
 
         signals.append(
-            "Valid LinkedIn profile"
+            "LinkedIn slug matches first name"
         )
 
     diagnostics[

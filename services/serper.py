@@ -2,10 +2,12 @@ import requests
 import os
 import urllib3
 import json
+
 from dotenv import load_dotenv
 
 from services.scoring import (
-    calculate_candidate_score
+    calculate_candidate_score,
+    passes_name_gate
 )
 
 urllib3.disable_warnings(
@@ -42,9 +44,14 @@ def search_linkedin(
         verify=False
     )
 
+    # -----------------------------------
+    # API Failure
+    # -----------------------------------
+
     if response.status_code != 200:
 
         print("\n=== SERPER API ERROR ===")
+
         print(response.text)
 
         return None
@@ -56,11 +63,11 @@ def search_linkedin(
         []
     )
 
-    # -----------------------------------
-    # Collect Candidate Profiles
-    # -----------------------------------
-
     linkedin_candidates = []
+
+    # -----------------------------------
+    # Candidate Extraction
+    # -----------------------------------
 
     for result in organic_results:
 
@@ -69,9 +76,10 @@ def search_linkedin(
             ""
         )
 
-        # Only consider personal LinkedIn profiles
+        # Only personal LinkedIn profiles
 
         if "linkedin.com/in/" not in link:
+
             continue
 
         title = result.get(
@@ -85,33 +93,28 @@ def search_linkedin(
         )
 
         # -----------------------------------
-        # Score Candidate
+        # Soft Name Gate
+        # -----------------------------------
+
+        if not passes_name_gate(
+            name,
+            title
+        ):
+
+            continue
+
+        # -----------------------------------
+        # Candidate Scoring
         # -----------------------------------
 
         score_data = calculate_candidate_score(
 
-        input_name=name,
+            input_name=name,
 
-        input_company=company,
+            input_company=company,
 
-         candidate=result
+            candidate=result
         )
-
-        score = score_data[
-        "confidence_score"
-        ]
-
-        signals = score_data[
-        "match_signals"
-        ]
-
-        penalties = score_data[
-       "penalties"
-        ]
-
-        diagnostics = score_data[
-        "diagnostics"
-        ]
 
         candidate_data = {
 
@@ -121,10 +124,25 @@ def search_linkedin(
 
             "snippet": snippet,
 
-            "confidence_score": score,
-            "match_signals": signals,
-            "penalties": penalties,
-            "diagnostics": diagnostics
+            "confidence_score":
+                score_data[
+                    "confidence_score"
+                ],
+
+            "match_signals":
+                score_data[
+                    "match_signals"
+                ],
+
+            "penalties":
+                score_data[
+                    "penalties"
+                ],
+
+            "diagnostics":
+                score_data[
+                    "diagnostics"
+                ]
         }
 
         linkedin_candidates.append(
@@ -132,7 +150,7 @@ def search_linkedin(
         )
 
     # -----------------------------------
-    # No Candidates Found
+    # No Candidates
     # -----------------------------------
 
     if not linkedin_candidates:
@@ -144,7 +162,7 @@ def search_linkedin(
         return None
 
     # -----------------------------------
-    # Sort By Confidence
+    # Sort Candidates
     # -----------------------------------
 
     linkedin_candidates = sorted(
@@ -157,15 +175,27 @@ def search_linkedin(
         reverse=True
     )
 
-    # -----------------------------------
-    # Best Match
-    # -----------------------------------
-
     best_candidate = linkedin_candidates[0]
 
-    print("\n=== BEST MATCH ===")
+    # -----------------------------------
+    # Lower Threshold
+    # -----------------------------------
 
-    print(best_candidate)
+    if best_candidate[
+        "confidence_score"
+    ] < 55:
+
+        print(
+            "\nRejected low-confidence match"
+        )
+
+        return None
+
+    # -----------------------------------
+    # Debug Logs
+    # -----------------------------------
+
+    print("\n=== BEST MATCH ===")
 
     print(
         json.dumps(
@@ -174,28 +204,24 @@ def search_linkedin(
         )
     )
 
-    # -----------------------------------
-    # Optional:
-    # Show Top Candidates
-    # -----------------------------------
-
-
-
     print("\n=== TOP CANDIDATES ===")
 
     for idx, candidate in enumerate(
+
         linkedin_candidates[:5],
+
         start=1
     ):
 
-     print(
-        f"\n========== Candidate #{idx} =========="
-    )
-
-    print(
-        json.dumps(
-            candidate,
-            indent=4
+        print(
+            f"\n========== Candidate #{idx} =========="
         )
-    )
+
+        print(
+            json.dumps(
+                candidate,
+                indent=4
+            )
+        )
+
     return best_candidate
